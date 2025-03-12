@@ -15,7 +15,7 @@ type Config struct {
 }
 
 // ConfigDir is the directory where config is stored
-const ConfigDir = "~/.config/claudiff"
+const ConfigDir = "~/.config/difx"
 
 // ConfigFile is the path to the config file
 const ConfigFile = "config.json"

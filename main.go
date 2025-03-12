@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tydin/claudiff/cmd"
+	"github.com/tydin/difx/cmd"
 )
 
 func main() {

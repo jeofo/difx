@@ -8,14 +8,14 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/tydin/claudiff/config"
-	"github.com/tydin/claudiff/diff"
+	"github.com/tydin/difx/config"
+	"github.com/tydin/difx/diff"
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "claudiff [options] [--] [<path>...]",
+	Use:   "difx [options] [--] [<path>...]",
 	Short: "A tool that uses Claude AI to explain git diffs",
-	Long: `claudiff is a command-line tool that uses Claude AI to explain git diffs.
+	Long: `difx is a command-line tool that uses Claude AI to explain git diffs.
 It accepts the same syntax as the git diff command and provides AI-powered explanations.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Load or create config
@@ -53,25 +53,25 @@ It accepts the same syntax as the git diff command and provides AI-powered expla
 
 		// Create a channel for streaming output
 		outputChan := make(chan string)
-		
+
 		// Start a goroutine to handle the display of streaming output
 		go func() {
 			var buffer strings.Builder
 			var lastProcessed string
-			
+
 			for chunk := range outputChan {
 				// Add the new chunk to the buffer
 				buffer.WriteString(chunk)
-				
+
 				// Get the current full text
 				currentText := buffer.String()
-				
+
 				// Clean up any incomplete escape sequences at the end of the text
 				currentText = cleanIncompleteEscapeSequences(currentText)
-				
+
 				// Convert \033 escape sequences to actual escape characters
 				processedText := convertEscapeSequences(currentText)
-				
+
 				// Only print the new part (what's been added since last time)
 				if len(lastProcessed) < len(processedText) {
 					newPart := processedText[len(lastProcessed):]
@@ -79,11 +79,11 @@ It accepts the same syntax as the git diff command and provides AI-powered expla
 					lastProcessed = processedText
 				}
 			}
-			
+
 			// Print a final newline when done
 			fmt.Println()
 		}()
-		
+
 		// Create a callback function to process streaming output
 		streamCallback := func(chunk string) {
 			outputChan <- chunk
@@ -95,7 +95,7 @@ It accepts the same syntax as the git diff command and provides AI-powered expla
 			fmt.Fprintf(os.Stderr, "\nError getting explanation from Claude: %s\n", err)
 			os.Exit(1)
 		}
-		
+
 		// Close the output channel to signal completion
 		close(outputChan)
 	},
@@ -110,12 +110,12 @@ func Execute() error {
 func convertEscapeSequences(text string) string {
 	// Replace \033 with the actual escape character
 	result := strings.ReplaceAll(text, "\\033", "\033")
-	
+
 	// For backward compatibility, also handle the old markers
 	// Create color objects
 	red := color.New(color.FgRed, color.Bold)
 	green := color.New(color.FgGreen, color.Bold)
-	
+
 	// Find and replace additions (green text) with [ADD] markers
 	addRegex := regexp.MustCompile(`\[ADD\](.*?)\[/ADD\]`)
 	result = addRegex.ReplaceAllStringFunc(result, func(match string) string {
@@ -125,7 +125,7 @@ func convertEscapeSequences(text string) string {
 		}
 		return match
 	})
-	
+
 	// Find and replace deletions (red text) with [DEL] markers
 	delRegex := regexp.MustCompile(`\[DEL\](.*?)\[/DEL\]`)
 	result = delRegex.ReplaceAllStringFunc(result, func(match string) string {
@@ -135,7 +135,7 @@ func convertEscapeSequences(text string) string {
 		}
 		return match
 	})
-	
+
 	// Also handle the GREEN_START/GREEN_END and RED_START/RED_END markers for backward compatibility
 	greenRegex := regexp.MustCompile(`GREEN_START(.*?)GREEN_END`)
 	result = greenRegex.ReplaceAllStringFunc(result, func(match string) string {
@@ -145,7 +145,7 @@ func convertEscapeSequences(text string) string {
 		}
 		return match
 	})
-	
+
 	redRegex := regexp.MustCompile(`RED_START(.*?)RED_END`)
 	result = redRegex.ReplaceAllStringFunc(result, func(match string) string {
 		submatches := redRegex.FindStringSubmatch(match)
@@ -154,7 +154,7 @@ func convertEscapeSequences(text string) string {
 		}
 		return match
 	})
-	
+
 	return result
 }
 
@@ -198,7 +198,7 @@ func cleanIncompleteEscapeSequences(text string) string {
 	if strings.HasSuffix(text, "\\033[31;1") {
 		return text[:len(text)-9]
 	}
-	
+
 	// For backward compatibility, also check for incomplete markers
 	// Check for incomplete [ADD]/[DEL] markers
 	if strings.HasSuffix(text, "[") {
@@ -222,7 +222,7 @@ func cleanIncompleteEscapeSequences(text string) string {
 	if strings.HasSuffix(text, "[DEL") {
 		return text[:len(text)-4]
 	}
-	
+
 	// Check for incomplete GREEN_START/RED_START markers
 	if strings.HasSuffix(text, "G") {
 		return text[:len(text)-1]
@@ -242,14 +242,14 @@ func cleanIncompleteEscapeSequences(text string) string {
 	if strings.HasSuffix(text, "RED_START") {
 		return text[:len(text)-9]
 	}
-	
+
 	return text
 }
 
 func init() {
 	// Force color output regardless of terminal detection
 	color.NoColor = false
-	
+
 	// Add flags that git diff supports
 	rootCmd.Flags().BoolP("patch", "p", true, "Generate patch")
 	rootCmd.Flags().BoolP("stat", "", false, "Generate diffstat")
@@ -257,7 +257,7 @@ func init() {
 	rootCmd.Flags().BoolP("name-status", "", false, "Show only names and status of changed files")
 	rootCmd.Flags().StringP("diff-filter", "", "", "Filter by added/modified/deleted")
 	rootCmd.Flags().StringP("unified", "U", "", "Show n lines of context")
-	
-	// Add claudiff specific flags
+
+	// Add difx specific flags
 	rootCmd.Flags().BoolP("verbose", "v", false, "Show detailed output including the diff")
 }

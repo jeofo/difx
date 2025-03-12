@@ -1,4 +1,4 @@
-module github.com/tydin/claudiff
+module github.com/tydin/difx
 
 go 1.21
 
