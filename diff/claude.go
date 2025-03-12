@@ -92,26 +92,23 @@ func GetExplanation(diffOutput string, apiKey string, callback func(string)) (st
 	prompt += "Here's the git diff output:\n\n```\n"
 	prompt += diffOutput
 	prompt += "\n```\n\n"
-	prompt += "Please consider:\n"
-	prompt += "1. What files were changed\n"
-	prompt += "2. The purpose and impact of the changes\n"
-	prompt += "3. Any potential issues or considerations\n"
-	prompt += "I want you to be concise (less than 200 words) using the format below, do not return it in ```, return the text only:\n\n```"
+	prompt += "Be concise but include every file that was changed in DETAILS. Use the format below and output plaintext without ```. Only include SUMMARY,FILE CHANGES and DETAILS section:\n\n```"
 	prompt += `
 --------------------------------------------------
 SUMMARY:
   - Files modified: {files_modified}
+	- One line summary of the changes
   - Insertions: {insertions}
   - Deletions: {deletions}
 
 FILE CHANGES:
 {file_changes}
 
-DETAILED BREAKDOWN:
+DETAILS:
 	file1:
 		+ {detailed_breakdown_additions}
-	file2:
 		- {detailed_breakdown_deletions}
+	...
 --------------------------------------------------
 `
 	prompt += "\n```\n"
