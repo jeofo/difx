@@ -11,15 +11,15 @@ import (
 
 const (
 	ClaudeAPIURL = "https://api.anthropic.com/v1/messages"
-	ClaudeModel  = "claude-3-opus-20240229"
+	ClaudeModel  = "claude-3-7-sonnet-latest"
 )
 
 // ClaudeRequest represents the request structure for the Claude API
 type ClaudeRequest struct {
-	Model       string   `json:"model"`
+	Model       string    `json:"model"`
 	Messages    []Message `json:"messages"`
-	MaxTokens   int      `json:"max_tokens"`
-	Temperature float64  `json:"temperature,omitempty"`
+	MaxTokens   int       `json:"max_tokens"`
+	Temperature float64   `json:"temperature,omitempty"`
 }
 
 // Message represents a message in the Claude API request
@@ -30,12 +30,12 @@ type Message struct {
 
 // ClaudeResponse represents the response structure from the Claude API
 type ClaudeResponse struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"`
-	Role       string `json:"role"`
+	ID         string         `json:"id"`
+	Type       string         `json:"type"`
+	Role       string         `json:"role"`
 	Content    []ContentBlock `json:"content"`
-	Model      string `json:"model"`
-	StopReason string `json:"stop_reason"`
+	Model      string         `json:"model"`
+	StopReason string         `json:"stop_reason"`
 }
 
 // ContentBlock represents a block of content in the Claude API response
@@ -48,15 +48,38 @@ type ContentBlock struct {
 func GetExplanation(diffOutput string, apiKey string) (string, error) {
 	// Create the prompt for Claude
 	prompt := "I'm going to show you the output of a git diff command. Please explain these changes in a clear, concise way.\n\n"
-	prompt += "If you need more context about the code, you can ask me to show you the content of specific files or the content of files at specific commits.\n\n"
 	prompt += "Here's the git diff output:\n\n```\n"
 	prompt += diffOutput
 	prompt += "\n```\n\n"
-	prompt += "Please explain:\n"
+	prompt += "Please consider:\n"
 	prompt += "1. What files were changed\n"
 	prompt += "2. The purpose and impact of the changes\n"
 	prompt += "3. Any potential issues or considerations\n"
-	prompt += "4. A summary of the overall change"
+	prompt += "I want you to be concise (less than 200 words) using the format below, do not return it in ```, return the text only:\n\n```"
+	prompt += `
+--------------------------------------------------
+                  CLAUDIFF
+--------------------------------------------------
+SUMMARY:
+  - Files modified: {files_modified}
+  - Insertions: {insertions}
+  - Deletions: {deletions}
+
+FILE CHANGES:
+{file_changes}
+
+DETAILED BREAKDOWN:
+	file1:
+		- {detailed_breakdown}
+	file2:
+		- {detailed_breakdown}
+--------------------------------------------------
+`
+	prompt += "\n```\n"
+	prompt += "Instead of using ANSI color codes directly, please use the following special markers to indicate text that should be colored:\n\n"
+	prompt += "For additions (green text): [ADD]your text here[/ADD]\n"
+	prompt += "For deletions (red text): [DEL]your text here[/DEL]\n\n"
+	prompt += "IMPORTANT: Make sure to use these exact markers. Do not use ANSI escape codes or any other formatting."
 
 	// Create the request for Claude
 	request := ClaudeRequest{
