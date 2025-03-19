@@ -9,9 +9,19 @@ import (
 	"strings"
 )
 
+// SupportedModels defines the available LLM models
+const (
+	ModelClaude    = "claude"
+	ModelAzureOpenAI = "azure_openai"
+)
+
 // Config holds the application configuration
 type Config struct {
-	ClaudeAPIKey string `json:"claude_api_key"`
+	ActiveModel        string `json:"active_model"`
+	ClaudeAPIKey       string `json:"claude_api_key"`
+	AzureOpenAIEndpoint string `json:"azure_openai_endpoint"`
+	AzureOpenAIKey     string `json:"azure_openai_key"`
+	Streaming          bool   `json:"streaming"`
 }
 
 // ConfigDir is the directory where config is stored
@@ -58,22 +68,42 @@ func LoadOrCreate() (*Config, error) {
 		return nil, err
 	}
 
-	// Check if config file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		// Create empty config
-		return &Config{}, nil
-	}
-
-	// Read config file
-	file, err := os.Open(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer file.Close()
-
 	var config Config
-	if err := json.NewDecoder(file).Decode(&config); err != nil {
-		return nil, fmt.Errorf("failed to decode config file: %w", err)
+	
+	// Set default values
+	config.ActiveModel = ModelClaude
+	config.Streaming = true
+
+	// Check if config file exists
+	fileExists := true
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		fileExists = false
+	}
+
+	// Read config file if it exists
+	if fileExists {
+		file, err := os.Open(configPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open config file: %w", err)
+		}
+		defer file.Close()
+
+		if err := json.NewDecoder(file).Decode(&config); err != nil {
+			return nil, fmt.Errorf("failed to decode config file: %w", err)
+		}
+	}
+
+	// Override with environment variables if they exist
+	if envKey := os.Getenv("CLAUDE_API_KEY"); envKey != "" {
+		config.ClaudeAPIKey = envKey
+	}
+	
+	if envEndpoint := os.Getenv("AZURE_OPENAI_ENDPOINT"); envEndpoint != "" {
+		config.AzureOpenAIEndpoint = envEndpoint
+	}
+	
+	if envKey := os.Getenv("AZURE_OPENAI_KEY"); envKey != "" {
+		config.AzureOpenAIKey = envKey
 	}
 
 	return &config, nil

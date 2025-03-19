@@ -12,10 +12,13 @@ import (
 	"github.com/tydin/difx/diff"
 )
 
+// Command line flags
+var ciMode bool
+
 var rootCmd = &cobra.Command{
 	Use:   "difx [options] [--] [<path>...]",
-	Short: "A tool that uses Claude AI to explain git diffs",
-	Long: `difx is a command-line tool that uses Claude AI to explain git diffs.
+	Short: "A tool that uses AI to explain git diffs",
+	Long: `difx is a command-line tool that uses AI to explain git diffs.
 It accepts the same syntax as the git diff command and provides AI-powered explanations.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Load or create config
@@ -25,16 +28,29 @@ It accepts the same syntax as the git diff command and provides AI-powered expla
 			os.Exit(1)
 		}
 
-		// Check if API key is available
-		if cfg.ClaudeAPIKey == "" {
-			apiKey, err := config.PromptForAPIKey()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error getting API key: %s\n", err)
-				os.Exit(1)
+		// Check if we're in CI mode
+		if ciMode {
+			cfg.Streaming = false
+		}
+
+		// Check if API keys are available based on active model
+		switch cfg.ActiveModel {
+		case config.ModelClaude:
+			if cfg.ClaudeAPIKey == "" {
+				apiKey, err := config.PromptForAPIKey()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error getting Claude API key: %s\n", err)
+					os.Exit(1)
+				}
+				cfg.ClaudeAPIKey = apiKey
+				if err := config.Save(cfg); err != nil {
+					fmt.Fprintf(os.Stderr, "Error saving config: %s\n", err)
+					os.Exit(1)
+				}
 			}
-			cfg.ClaudeAPIKey = apiKey
-			if err := config.Save(cfg); err != nil {
-				fmt.Fprintf(os.Stderr, "Error saving config: %s\n", err)
+		case config.ModelAzureOpenAI:
+			if cfg.AzureOpenAIEndpoint == "" || cfg.AzureOpenAIKey == "" {
+				fmt.Fprintf(os.Stderr, "Azure OpenAI endpoint and key must be set in config or environment variables\n")
 				os.Exit(1)
 			}
 		}
@@ -51,53 +67,71 @@ It accepts the same syntax as the git diff command and provides AI-powered expla
 			return
 		}
 
-		// Create a channel for streaming output
-		outputChan := make(chan string)
+		// Handle streaming vs non-streaming mode differently
+		if cfg.Streaming {
+			// Create a channel for streaming output
+			outputChan := make(chan string)
 
-		// Start a goroutine to handle the display of streaming output
-		go func() {
-			var buffer strings.Builder
-			var lastProcessed string
+			// Start a goroutine to handle the display of streaming output
+			go func() {
+				var buffer strings.Builder
+				var lastProcessed string
 
-			for chunk := range outputChan {
-				// Add the new chunk to the buffer
-				buffer.WriteString(chunk)
+				for chunk := range outputChan {
+					// Add the new chunk to the buffer
+					buffer.WriteString(chunk)
 
-				// Get the current full text
-				currentText := buffer.String()
+					// Get the current full text
+					currentText := buffer.String()
 
-				// Clean up any incomplete escape sequences at the end of the text
-				currentText = cleanIncompleteEscapeSequences(currentText)
+					// Clean up any incomplete escape sequences at the end of the text
+					currentText = cleanIncompleteEscapeSequences(currentText)
 
-				// Convert \033 escape sequences to actual escape characters
-				processedText := convertEscapeSequences(currentText)
+					// Convert \033 escape sequences to actual escape characters
+					processedText := convertEscapeSequences(currentText)
 
-				// Only print the new part (what's been added since last time)
-				if len(lastProcessed) < len(processedText) {
-					newPart := processedText[len(lastProcessed):]
-					fmt.Printf("%s", newPart) // Use Printf for better handling of escape sequences
-					lastProcessed = processedText
+					// Only print the new part (what's been added since last time)
+					if len(lastProcessed) < len(processedText) {
+						newPart := processedText[len(lastProcessed):]
+						fmt.Printf("%s", newPart) // Use Printf for better handling of escape sequences
+						lastProcessed = processedText
+					}
 				}
+
+				// Print a final newline when done
+				fmt.Println()
+			}()
+
+			// Create a callback function to process streaming output
+			streamCallback := func(chunk string) {
+				outputChan <- chunk
 			}
 
-			// Print a final newline when done
-			fmt.Println()
-		}()
+			// Call the API with streaming callback
+			_, err = diff.GetExplanation(diffOutput, cfg, streamCallback)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\nError getting explanation from AI: %s\n", err)
+				os.Exit(1)
+			}
 
-		// Create a callback function to process streaming output
-		streamCallback := func(chunk string) {
-			outputChan <- chunk
+			// Close the output channel to signal completion
+			close(outputChan)
+		} else {
+			// Non-streaming mode (CI mode)
+			// Simple callback that does nothing since we'll print the full response at the end
+			streamCallback := func(chunk string) {}
+
+			// Call the API
+			response, err := diff.GetExplanation(diffOutput, cfg, streamCallback)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "\nError getting explanation from AI: %s\n", err)
+				os.Exit(1)
+			}
+
+			// Process and print the full response
+			processedText := convertEscapeSequences(response)
+			fmt.Println(processedText)
 		}
-
-		// Call the API with streaming callback
-		_, err = diff.GetExplanation(diffOutput, cfg.ClaudeAPIKey, streamCallback)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "\nError getting explanation from Claude: %s\n", err)
-			os.Exit(1)
-		}
-
-		// Close the output channel to signal completion
-		close(outputChan)
 	},
 }
 
@@ -253,6 +287,9 @@ func init() {
 	// Add flags that git diff supports
 	rootCmd.Flags().BoolP("patch", "p", true, "Generate patch")
 	rootCmd.Flags().BoolP("stat", "", false, "Generate diffstat")
+	
+	// Add the --ci flag
+	rootCmd.Flags().BoolVar(&ciMode, "ci", false, "Run in CI mode (disables streaming)")
 	rootCmd.Flags().BoolP("name-only", "", false, "Show only names of changed files")
 	rootCmd.Flags().BoolP("name-status", "", false, "Show only names and status of changed files")
 	rootCmd.Flags().StringP("diff-filter", "", "", "Filter by added/modified/deleted")
